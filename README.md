@@ -46,15 +46,6 @@ This is an exploratory proof of concept designed for the Ensembl GSoC project id
 
 ## Architecture diagrams
 
-The proposal diagrams should be exported into `docs/diagrams/` with the filenames below so they render automatically in this README.
-
-Expected files:
-
-1. `docs/diagrams/system-context.png`
-2. `docs/diagrams/component-architecture.png`
-3. `docs/diagrams/sequence-search-flow.png`
-4. `docs/diagrams/data-model-fts.png`
-
 ### 1) System context
 
 ![System context diagram](docs/diagrams/system-context.jpeg)
