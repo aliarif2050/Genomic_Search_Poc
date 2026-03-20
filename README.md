@@ -46,9 +46,10 @@ This is an exploratory proof of concept designed for the Ensembl GSoC project id
 
 ## Architecture diagrams
 
+
 ### 1) System context
 
-![System context diagram](docs/diagrams/system-context.jpeg)
+<img src="docs/diagrams/system-context.jpeg" alt="System context diagram" width="400" height="600">
 
 Shows external actors and boundaries: user, developer, GFF3 source, browser client, and static host.
 
