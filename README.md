@@ -44,6 +44,41 @@ This is an exploratory proof of concept designed for the Ensembl GSoC project id
 5. UI renders results (`src/components/SearchBar.tsx`).
 6. Selected result navigates JBrowse (`src/components/GenomeBrowser.tsx`).
 
+## Architecture diagrams
+
+The proposal diagrams should be exported into `docs/diagrams/` with the filenames below so they render automatically in this README.
+
+Expected files:
+
+1. `docs/diagrams/system-context.png`
+2. `docs/diagrams/component-architecture.png`
+3. `docs/diagrams/sequence-search-flow.png`
+4. `docs/diagrams/data-model-fts.png`
+
+### 1) System context
+
+![System context diagram](docs/diagrams/system-context.jpeg)
+
+Shows external actors and boundaries: user, developer, GFF3 source, browser client, and static host.
+
+### 2) Component architecture
+
+![Component architecture diagram](docs/diagrams/component-architecture.jpeg)
+
+Shows internal runtime structure: React UI, hook/orchestration, worker API, DB worker runtime, HTTP range loader, SQLite WASM, and JBrowse integration.
+
+### 3) Sequence flow (search to navigation)
+
+![Sequence diagram for search flow](docs/diagrams/sequence-search-flow.jpeg)
+
+Shows request flow and alternate paths: debounce, empty query, init error path, range-supported load, full-GET fallback, query execution, and JBrowse navigation.
+
+### 4) Data model and FTS synchronization
+
+![Data model and FTS trigger diagram](docs/diagrams/ERD_dataModel.jpeg)
+
+Shows `features`, `features_fts`, trigger behavior (`features_ai`, `features_au`, `features_ad`), and rowid mapping (`content_rowid='id'`).
+
 ## Repository structure
 
 ```text
@@ -53,6 +88,12 @@ genomic-search-poc/
 |  |- test_indexer.py
 |  |- sample.gff3
 |  \- MGYG000512084.gff
+|- docs/
+|  \- diagrams/
+|     |- system-context.png
+|     |- component-architecture.png
+|     |- sequence-search-flow.png
+|     \- data-model-fts.png
 |- src/
 |  |- components/
 |  |  |- SearchBar.tsx
