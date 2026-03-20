@@ -12,6 +12,8 @@ import type {
   SequenceRegion,
 } from "../workers/db.worker";
 
+const FEATURE_DISPLAY_HEIGHT_PX = 900;
+
 interface GenomeBrowserProps {
   sequenceRegions: SequenceRegion[];
   allFeatures: GenomicFeature[];
@@ -109,7 +111,19 @@ export default function GenomeBrowser({
 
     try {
       state.session.view.showTrack("genomic-features");
-    } catch {}
+applyFeatureHeight(state, FEATURE_DISPLAY_HEIGHT_PX);
+
+      const featureTrack = state.session.view?.tracks?.find(
+        (track: any) =>
+          track?.configuration === "genomic-features" ||
+          track?.trackId === "genomic-features"
+      );
+
+      const display = featureTrack?.displays?.[0];
+      if (display?.setHeight) {
+        display.setHeight(FEATURE_DISPLAY_HEIGHT_PX);
+      }
+    } catch { }
 
     setViewState(state);
     initialised.current = true;
@@ -135,14 +149,44 @@ export default function GenomeBrowser({
   if (sequenceRegions.length === 0) {
     return null;
   }
+  function applyFeatureHeight(state: any, height: number) {
+  let tries = 0;
+
+  const tick = () => {
+    try {
+      const featureTrack = state.session.view?.tracks?.find(
+        (track: any) =>
+          track?.configuration === "genomic-features" ||
+          track?.trackId === "genomic-features",
+      );
+
+      const display = featureTrack?.displays?.[0];
+      if (display?.setHeight) {
+        display.setHeight(height);
+        return;
+      }
+    } catch {}
+
+    if (tries < 12) {
+      tries += 1;
+      requestAnimationFrame(tick);
+    }
+  };
+
+  tick();
+}
 
   return (
-    <section className="flex-6 min-w-0 h-fit sticky top-6 border border-[#2a2d3a] rounded-lg p-4 bg-[#1a1d27]">
+    <section className="min-w-0 w-full lg:basis-[62%] lg:max-w-[62%] border border-[#2a2d3a] rounded-lg p-3 bg-[#1a1d27]">
       <h2 className="text-lg font-semibold mb-3 text-[#e1e4ed]">
         Genome Browser
       </h2>
       {viewState ? (
-        <JBrowseLinearGenomeView viewState={viewState} />
+        <div className="jbrowse-viewport w-full h-[520px] max-h-[72vh] overflow-x-auto overflow-y-hidden rounded-md">
+          <div className="jbrowse-shell h-full">
+            <JBrowseLinearGenomeView viewState={viewState} />
+          </div>
+        </div>
       ) : (
         <p className="text-[#8b8fa3] text-sm py-4">
           Preparing genome browser…

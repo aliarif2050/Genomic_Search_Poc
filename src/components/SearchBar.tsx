@@ -59,7 +59,7 @@ export default function SearchBar({ onFeatureClick }: SearchBarProps) {
   }, []);
 
   return (
-    <div className="pl-4 flex-4 min-w-0 flex flex-col">
+    <div className="pl-4 min-w-0 w-full lg:basis-[38%] lg:max-w-[38%] flex flex-col">
       {/* Header */}
       <header>
         <h1 className="pl-2.5 text-3xl font-bold mb-1">🧬 Genomic Feature Search</h1>

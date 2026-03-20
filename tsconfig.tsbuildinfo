@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/genomebrowser.tsx","./src/components/searchbar.tsx","./src/hooks/usedbsearch.ts","./src/workers/db.worker.ts","./src/workers/httprangeloader.ts"],"version":"5.9.3"}
