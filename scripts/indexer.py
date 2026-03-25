@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""
-indexer.py — GFF3 → SQLite+FTS5 Indexer
-========================================
-Parses a GFF3 file using gffutils and produces a genomics.db SQLite database
-with:
-  • `features`   – main table holding genomic coordinates + metadata
-  • `features_fts` – FTS5 virtual table for full-text search on Name / ID / description
-"""
+
+#   indexer.py — GFF3 → SQLite+FTS5 Indexer
+#   ========================================
+#   Parses a GFF3 file using gffutils and produces a genomics.db SQLite database
+#   with:
+#    • `features`   --> main table holding genomic coordinates + metadata
+#    • `features_fts` --> FTS5 virtual table for full-text search on Name / ID / description
+
 
 import argparse
 import os
@@ -88,7 +88,7 @@ def build_database(gff_path: str, db_path: str) -> None:
 
     # --- 1. Create gffutils DB in a temp file --------------------------------
     print(f"[indexer] Parsing GFF3: {gff_path}")
-    tmp_gffdb = tempfile.mktemp(suffix=".gffutils.db")
+    tmp_gffdb = tempfile.mkstemp(suffix=".gffutils.db")
     try:
         gff_db = gffutils.create_db(
             gff_path,

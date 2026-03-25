@@ -94,7 +94,7 @@ const workerApi = {
    * Full-text search against the FTS5 table.
    * Returns matching features ordered by FTS rank.
    */
-  search(query: string, limit = 50): SearchResult {
+  search(query: string, limit = 60): SearchResult {
     if (!db) throw new Error("Database not initialised");
 
     const t0 = performance.now();

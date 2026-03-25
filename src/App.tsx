@@ -4,14 +4,33 @@ import GenomeBrowser from "./components/GenomeBrowser";
 import { useDbSearch, type GenomicFeature } from "./hooks/useDbSearch";
 
 export default function App() {
-  const { sequenceRegions, allFeatures } = useDbSearch();
+  const {
+    results,
+    loading,
+    searching,
+    status,
+    error,
+    elapsed,
+    search,
+    sequenceRegions,
+    allFeatures,
+  } = useDbSearch();
   const [selectedFeature, setSelectedFeature] =
     useState<GenomicFeature | null>(null);
 
   return (
     <main className="min-h-screen w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 py-6 flex flex-col">
       <div className="w-full flex-1 min-h-0 flex flex-col lg:flex-row gap-6 items-start">
-        <SearchBar onFeatureClick={setSelectedFeature} />
+        <SearchBar
+          onFeatureClick={setSelectedFeature}
+          results={results}
+          loading={loading}
+          searching={searching}
+          status={status}
+          error={error}
+          elapsed={elapsed}
+          search={search}
+        />
 
         <GenomeBrowser
           sequenceRegions={sequenceRegions}

@@ -5,13 +5,20 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useDbSearch, type GenomicFeature } from "../hooks/useDbSearch";
+import type { GenomicFeature } from "../hooks/useDbSearch";
 
 const DEBOUNCE_MS = 250;
 
 interface SearchBarProps {
   /** Called when the user clicks a feature row. */
   onFeatureClick?: (feature: GenomicFeature) => void;
+  results: GenomicFeature[];
+  loading: boolean;
+  searching: boolean;
+  status: string;
+  error: string | null;
+  elapsed: number;
+  search: (query: string) => Promise<void>;
 }
 
 // Helper for dynamic badge colors
@@ -30,9 +37,16 @@ function getBadgeClasses(type: string) {
   }
 }
 
-export default function SearchBar({ onFeatureClick }: SearchBarProps) {
-  const { results, loading, searching, status, error, elapsed, search } =
-    useDbSearch();
+export default function SearchBar({
+  onFeatureClick,
+  results,
+  loading,
+  searching,
+  status,
+  error,
+  elapsed,
+  search,
+}: SearchBarProps) {
 
   const [query, setQuery] = useState("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
