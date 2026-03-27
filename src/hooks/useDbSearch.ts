@@ -25,10 +25,15 @@ export interface UseDbSearchReturn {
   elapsed: number;
   /** Trigger a search. Debounced automatically in the component layer. */
   search: (query: string) => Promise<void>;
+  /** Retrieve features overlapping a genomic window. */
+  getFeaturesInRegion: (
+    seqid: string,
+    start: number,
+    end: number,
+    limit?: number
+  ) => Promise<GenomicFeature[]>;
   /** Sequence regions (chromosomes / scaffolds) discovered from the DB */
   sequenceRegions: SequenceRegion[];
-  /** All features loaded from the DB (for JBrowse display) */
-  allFeatures: GenomicFeature[];
 }
 
 const DB_URL = "/genomics.db";
@@ -44,7 +49,6 @@ export function useDbSearch(): UseDbSearchReturn {
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [sequenceRegions, setSequenceRegions] = useState<SequenceRegion[]>([]);
-  const [allFeatures, setAllFeatures] = useState<GenomicFeature[]>([]);
 
   // ---- Boot: fetch DB + init worker ----
   useEffect(() => {
@@ -71,9 +75,7 @@ export function useDbSearch(): UseDbSearchReturn {
 
           // 3. Load metadata for the genome browser
           const regions = await proxy.getSequenceRegions();
-          const features = await proxy.getAllFeatures();
           setSequenceRegions(regions);
-          setAllFeatures(features);
 
           setLoading(false);
         }
@@ -117,6 +119,24 @@ export function useDbSearch(): UseDbSearchReturn {
     }
   }, []);
 
+  const getFeaturesInRegion = useCallback(
+    async (seqid: string, start: number, end: number, limit = 5000) => {
+      if (!workerRef.current) return [];
+      try {
+        return await workerRef.current.getFeaturesInRegion(
+          seqid,
+          start,
+          end,
+          limit
+        );
+      } catch (err: any) {
+        setError(err.message ?? String(err));
+        return [];
+      }
+    },
+    []
+  );
+
   return {
     results,
     loading,
@@ -125,7 +145,7 @@ export function useDbSearch(): UseDbSearchReturn {
     error,
     elapsed,
     search,
+    getFeaturesInRegion,
     sequenceRegions,
-    allFeatures,
   };
 }

@@ -48,6 +48,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS features_fts USING fts5(
 );
 """
 
+SCHEMA_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_features_seqid_start_end
+ON features(seqid, start, end);
+"""
+
 # Triggers keep the FTS index in sync when rows change.
 TRIGGERS = """
 CREATE TRIGGER IF NOT EXISTS features_ai AFTER INSERT ON features BEGIN
@@ -88,7 +93,8 @@ def build_database(gff_path: str, db_path: str) -> None:
 
     # --- 1. Create gffutils DB in a temp file --------------------------------
     print(f"[indexer] Parsing GFF3: {gff_path}")
-    tmp_gffdb = tempfile.mkstemp(suffix=".gffutils.db")
+    tmp_fd, tmp_gffdb = tempfile.mkstemp(suffix=".gffutils.db")
+    os.close(tmp_fd)
     try:
         gff_db = gffutils.create_db(
             gff_path,
@@ -107,6 +113,7 @@ def build_database(gff_path: str, db_path: str) -> None:
         cur = conn.cursor()
         cur.executescript(SCHEMA_MAIN)
         cur.executescript(SCHEMA_FTS)
+        cur.executescript(SCHEMA_INDEXES)
         cur.executescript(TRIGGERS)
         conn.commit()
         conn.close()
@@ -129,6 +136,7 @@ def build_database(gff_path: str, db_path: str) -> None:
     cur = conn.cursor()
     cur.executescript(SCHEMA_MAIN)
     cur.executescript(SCHEMA_FTS)
+    cur.executescript(SCHEMA_INDEXES)
     cur.executescript(TRIGGERS)
     conn.commit()
 

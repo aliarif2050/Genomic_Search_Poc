@@ -2,7 +2,7 @@
  * GenomeBrowser.tsx — Embedded JBrowse 2 linear genome view.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createViewState,
   JBrowseLinearGenomeView,
@@ -12,11 +12,14 @@ import type {
   SequenceRegion,
 } from "../workers/db.worker";
 
-const FEATURE_DISPLAY_HEIGHT_PX = 900;
-
 interface GenomeBrowserProps {
   sequenceRegions: SequenceRegion[];
-  allFeatures: GenomicFeature[];
+  getFeaturesInRegion: (
+    seqid: string,
+    start: number,
+    end: number,
+    limit?: number
+  ) => Promise<GenomicFeature[]>;
   selectedFeature: GenomicFeature | null;
 }
 
@@ -69,28 +72,49 @@ function makeTrackFeatures(features: GenomicFeature[]) {
 
 export default function GenomeBrowser({
   sequenceRegions,
-  allFeatures,
+  getFeaturesInRegion,
   selectedFeature,
 }: GenomeBrowserProps) {
   const [viewState, setViewState] = useState<any>(null);
+  const [windowFeatures, setWindowFeatures] = useState<GenomicFeature[]>([]);
+  const [currentLoc, setCurrentLoc] = useState<string | undefined>(undefined);
   const initialised = useRef(false);
 
+  const assembly = useMemo(() => {
+    if (sequenceRegions.length === 0) return null;
+    return makeAssembly(sequenceRegions);
+  }, [sequenceRegions]);
+
   useEffect(() => {
-    if (
-      initialised.current ||
-      sequenceRegions.length === 0 ||
-      allFeatures.length === 0
-    ) {
+    if (initialised.current || sequenceRegions.length === 0) {
       return;
     }
 
-    const assembly = makeAssembly(sequenceRegions);
-    const trackFeatures = makeTrackFeatures(allFeatures);
+    let cancelled = false;
 
-    const defaultLoc =
-      sequenceRegions.length > 0
-        ? `${sequenceRegions[0].seqid}:1..${Math.min(100_000, sequenceRegions[0].end)}`
-        : undefined;
+    const boot = async () => {
+      const first = sequenceRegions[0];
+      const start = 1;
+      const end = Math.min(100_000, first.end);
+      const features = await getFeaturesInRegion(first.seqid, start, end, 10_000);
+
+      if (cancelled) return;
+      setWindowFeatures(features);
+      setCurrentLoc(`${first.seqid}:${start}..${end}`);
+      initialised.current = true;
+    };
+
+    void boot();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sequenceRegions, getFeaturesInRegion]);
+
+  useEffect(() => {
+    if (!assembly || !currentLoc) {
+      return;
+    }
 
     const state = createViewState({
       assembly,
@@ -102,37 +126,26 @@ export default function GenomeBrowser({
           assemblyNames: ["genome"],
           adapter: {
             type: "FromConfigAdapter",
-            features: trackFeatures,
+            features: makeTrackFeatures(windowFeatures),
           },
         },
       ],
-      location: defaultLoc,
+      location: currentLoc,
     });
 
     try {
       state.session.view.showTrack("genomic-features");
-applyFeatureHeight(state, FEATURE_DISPLAY_HEIGHT_PX);
-
-      const featureTrack = state.session.view?.tracks?.find(
-        (track: any) =>
-          track?.configuration === "genomic-features" ||
-          track?.trackId === "genomic-features"
-      );
-
-      const display = featureTrack?.displays?.[0];
-      if (display?.setHeight) {
-        display.setHeight(FEATURE_DISPLAY_HEIGHT_PX);
-      }
-    } catch { }
+    } catch {}
 
     setViewState(state);
-    initialised.current = true;
-  }, [sequenceRegions, allFeatures]);
+  }, [assembly, windowFeatures, currentLoc]);
 
   useEffect(() => {
-    if (!viewState || !selectedFeature) return;
+    if (!selectedFeature) return;
 
-    try {
+    let cancelled = false;
+
+    const loadAndNavigate = async () => {
       const padding = Math.max(
         200,
         Math.round((selectedFeature.end - selectedFeature.start) * 0.2)
@@ -140,52 +153,41 @@ applyFeatureHeight(state, FEATURE_DISPLAY_HEIGHT_PX);
       const start = Math.max(1, selectedFeature.start - padding);
       const end = selectedFeature.end + padding;
       const loc = `${selectedFeature.seqid}:${start}..${end}`;
-      viewState.session.view.navToLocString(loc);
-    } catch (err) {
-      console.warn("[GenomeBrowser] Navigation failed:", err);
-    }
-  }, [selectedFeature, viewState]);
+
+      try {
+        const features = await getFeaturesInRegion(
+          selectedFeature.seqid,
+          start,
+          end,
+          10_000
+        );
+        if (cancelled) return;
+        setWindowFeatures(features);
+        setCurrentLoc(loc);
+      } catch (err) {
+        console.warn("[GenomeBrowser] Region fetch failed:", err);
+      }
+    };
+
+    void loadAndNavigate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFeature, getFeaturesInRegion]);
 
   if (sequenceRegions.length === 0) {
     return null;
   }
-  function applyFeatureHeight(state: any, height: number) {
-  let tries = 0;
-
-  const tick = () => {
-    try {
-      const featureTrack = state.session.view?.tracks?.find(
-        (track: any) =>
-          track?.configuration === "genomic-features" ||
-          track?.trackId === "genomic-features",
-      );
-
-      const display = featureTrack?.displays?.[0];
-      if (display?.setHeight) {
-        display.setHeight(height);
-        return;
-      }
-    } catch {}
-
-    if (tries < 12) {
-      tries += 1;
-      requestAnimationFrame(tick);
-    }
-  };
-
-  tick();
-}
 
   return (
-    <section className="min-w-0 w-full lg:basis-[62%] lg:max-w-[62%] border border-[#2a2d3a] rounded-lg p-3 bg-[#1a1d27]">
+    <section className="min-w-0 w-full lg:basis-[62%] lg:max-w-[62%] border border-[#2a2d3a] rounded-lg p-4 bg-[#1a1d27]">
       <h2 className="text-lg font-semibold mb-3 text-[#e1e4ed]">
         Genome Browser
       </h2>
       {viewState ? (
-        <div className="jbrowse-viewport w-full h-[520px] max-h-[72vh] overflow-x-auto overflow-y-hidden rounded-md">
-          <div className="jbrowse-shell h-full">
-            <JBrowseLinearGenomeView viewState={viewState} />
-          </div>
+        <div className="w-full min-h-[460px] h-[62vh] max-h-[760px] overflow-auto rounded-md border border-[#2a2d3a] bg-[#10141f]">
+          <JBrowseLinearGenomeView viewState={viewState} />
         </div>
       ) : (
         <p className="text-[#8b8fa3] text-sm py-4">

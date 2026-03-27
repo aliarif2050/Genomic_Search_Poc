@@ -94,7 +94,7 @@ const workerApi = {
    * Full-text search against the FTS5 table.
    * Returns matching features ordered by FTS rank.
    */
-  search(query: string, limit = 60): SearchResult {
+  search(query: string,): SearchResult {
     if (!db) throw new Error("Database not initialised");
 
     const t0 = performance.now();
@@ -115,14 +115,13 @@ const workerApi = {
         FROM features_fts AS fts
         JOIN features     AS f ON f.id = fts.rowid
        WHERE features_fts MATCH ?
-       ORDER BY fts.rank
-       LIMIT ?;
+       ORDER BY fts.rank;
     `;
 
     const rows: GenomicFeature[] = [];
     db.exec({
       sql,
-      bind: [ftsQuery, limit],
+      bind: [ftsQuery],
       rowMode: "object",
       callback: (row: GenomicFeature) => {
         rows.push({ ...row });
@@ -197,6 +196,39 @@ const workerApi = {
                     strand, biotype, description
                FROM features ORDER BY seqid, start LIMIT ?`,
       bind: [limit],
+      rowMode: "object",
+      callback: (row: GenomicFeature) => features.push({ ...row }),
+    });
+    return features;
+  },
+
+  /**
+   * Retrieve features overlapping a genomic window.
+   * Overlap condition: feature.end >= start AND feature.start <= end.
+   */
+  getFeaturesInRegion(
+    seqid: string,
+    start: number,
+    end: number,
+    limit = 5000
+  ): GenomicFeature[] {
+    if (!db) throw new Error("Database not initialised");
+
+    const safeStart = Math.max(1, Math.floor(start));
+    const safeEnd = Math.max(safeStart, Math.floor(end));
+    const safeLimit = Math.max(1, Math.floor(limit));
+
+    const features: GenomicFeature[] = [];
+    db.exec({
+      sql: `SELECT id, feature_id, name, feature_type, seqid, start, end,
+                   strand, biotype, description
+              FROM features
+             WHERE seqid = ?
+               AND end >= ?
+               AND start <= ?
+             ORDER BY start
+             LIMIT ?`,
+      bind: [seqid, safeStart, safeEnd, safeLimit],
       rowMode: "object",
       callback: (row: GenomicFeature) => features.push({ ...row }),
     });
