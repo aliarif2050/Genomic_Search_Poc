@@ -109,6 +109,15 @@ class TestSchema:
         }
         assert {"features_ai", "features_ad", "features_au"} <= triggers
 
+    def test_region_query_index_exists(self, conn):
+        indexes = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            ).fetchall()
+        }
+        assert "idx_features_seqid_start_end" in indexes
+
 
 # ---------------------------------------------------------------------------
 # Data integrity tests

@@ -44,7 +44,8 @@ async function probeRangeSupport(url: string): Promise<{
   supported: boolean;
   totalSize: number;
 }> {
-  const resp = await fetch(url, { method: "HEAD" });
+  const resp = await fetch(url, { method: "HEAD", headers: { "Accept-Encoding": "identity" } });
+
   if (!resp.ok) throw new Error(`HEAD ${url} failed with status ${resp.status}`);
 
   const acceptRanges = resp.headers.get("Accept-Ranges");
@@ -52,6 +53,8 @@ async function probeRangeSupport(url: string): Promise<{
     resp.headers.get("Content-Length") ?? "0",
     10
   );
+
+  console.log(`HEAD response: Accept-Ranges=${acceptRanges}, Content-Length=${contentLength}`);
 
   return {
     supported: acceptRanges === "bytes" && contentLength > 0,
@@ -69,7 +72,7 @@ async function fetchRange(
   end: number
 ): Promise<ArrayBuffer> {
   const resp = await fetch(url, {
-    headers: { Range: `bytes=${start}-${end}` },
+    headers: { Range: `bytes=${start}-${end}`, "Accept-Encoding": "identity" },
   });
 
   // 206 = Partial Content (expected), 200 = server ignored Range header
@@ -122,9 +125,10 @@ export async function loadWithRangeRequests(
   } catch {
     // HEAD failed or CORS blocked — fall through to plain GET
   }
-
+  supported = false;
   // ----- 2a. Fallback: plain GET -------------------------------------------
   if (!supported || totalSize === 0) {
+    console.log(`Range NOT supported — downloading full file with single GET...`);
     onProgress?.({
       phase: "Range requests not supported — downloading full file…",
       bytesLoaded: 0,
@@ -136,6 +140,8 @@ export async function loadWithRangeRequests(
     if (!resp.ok) throw new Error(`GET ${url} failed: HTTP ${resp.status}`);
     const buffer = await resp.arrayBuffer();
 
+    console.log(`Full file downloaded: ${(buffer.byteLength / 1024).toFixed(1)} KB`);
+
     return {
       buffer,
       usedRangeRequests: false,
@@ -146,6 +152,7 @@ export async function loadWithRangeRequests(
 
   // ----- 2b. Chunked Range-request download --------------------------------
   const totalChunks = Math.ceil(totalSize / chunkSize);
+  console.log(`Range supported — downloading in ${totalChunks} chunks of ${(chunkSize / 1024).toFixed(0)} KB`);
   const result = new Uint8Array(totalSize);
   let bytesLoaded = 0;
 

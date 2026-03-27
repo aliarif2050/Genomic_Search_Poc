@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: '/Genomic_Search_Poc/',
   plugins: [react(), tailwindcss()],
   // Required: the @sqlite.org/sqlite-wasm package loads .wasm files via
   // fetch(). Vite's dev-server must serve them with the correct MIME type

@@ -52,7 +52,11 @@ const workerApi = {
    * ArrayBuffer that was fetched on the main thread.
    */
   async init(arrayBuffer: ArrayBuffer): Promise<string> {
+    console.log(`init() called — received ArrayBuffer of ${(arrayBuffer.byteLength / 1024).toFixed(1)} KB`);
+    console.log(`The ENTIRE database is being loaded into memory at once`);
+
     // Dynamically import sqlite3 WASM init function
+    const t0 = performance.now();
     const { default: sqlite3InitModule } = await import(
       // @ts-ignore — resolved by Vite at bundle-time
       "@sqlite.org/sqlite-wasm"
@@ -62,13 +66,16 @@ const workerApi = {
       print: console.log,
       printErr: console.error,
     });
+    console.log(`SQLite WASM initialized in ${(performance.now() - t0).toFixed(1)} ms`);
 
     const oo = sqlite3.oo1;
     const capi = sqlite3.capi;
 
     // Deserialize the ArrayBuffer into an in-memory database
     const bytes = new Uint8Array(arrayBuffer);
+    console.log(`Deserializing ${(bytes.byteLength / 1024).toFixed(1)} KB into in-memory DB...`);
 
+    const t1 = performance.now();
     // Create an in-memory database and deserialize the bytes into it
     db = new oo.DB(":memory:", "c");
     const rc = capi.sqlite3_deserialize(
@@ -78,15 +85,18 @@ const workerApi = {
       bytes.byteLength,
       bytes.byteLength,
       capi.SQLITE_DESERIALIZE_FREEONCLOSE |
-        capi.SQLITE_DESERIALIZE_RESIZEABLE
+      capi.SQLITE_DESERIALIZE_RESIZEABLE
     );
 
     if (rc !== 0) {
       throw new Error(`sqlite3_deserialize failed with rc=${rc}`);
     }
+    console.log(`Deserialization took ${(performance.now() - t1).toFixed(1)} ms`);
 
     // Quick sanity check
     const count = db.selectValue("SELECT count(*) FROM features");
+    console.log(` Database ready — ${count} features indexed`);
+    console.log(`Total init time: ${(performance.now() - t0).toFixed(1)} ms`);
     return `Database loaded – ${count} features indexed.`;
   },
 
@@ -109,6 +119,8 @@ const workerApi = {
       .map((t) => `"${t}"*`)
       .join(" ");
 
+    console.log(`[db.worker] search("${query}") → FTS query: ${ftsQuery}`);
+
     const sql = `
       SELECT f.id, f.feature_id, f.name, f.feature_type,
              f.seqid, f.start, f.end, f.strand, f.biotype, f.description
@@ -128,6 +140,7 @@ const workerApi = {
       },
     });
 
+    console.log(`[db.worker] search found ${rows.length} results in ${(performance.now() - t0).toFixed(1)} ms`);
     return { features: rows, elapsed_ms: performance.now() - t0 };
   },
 
@@ -152,11 +165,14 @@ const workerApi = {
    * Falls back to a single GET if Range is unsupported.
    */
   async initFromUrl(url: string): Promise<string> {
+    console.log(`initFromUrl("${url}") — starting download...`);
     const { loadWithRangeRequests } = await import("./httpRangeLoader");
 
     const result = await loadWithRangeRequests(url, {
       chunkSize: 256 * 1024,
     });
+
+    console.log(`[db.worker] Download complete — ${(result.totalBytes / 1024).toFixed(1)} KB, rangeRequests=${result.usedRangeRequests}, chunks=${result.chunksLoaded}`);
 
     const msg = await workerApi.init(result.buffer);
 
