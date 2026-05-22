@@ -97,6 +97,7 @@ class TestSchema:
             "strand",
             "biotype",
             "description",
+            "annotations",
         }
         assert expected == cols
 

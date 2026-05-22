@@ -6,6 +6,7 @@
  */
 
 import * as Comlink from "comlink";
+import { initSyncSQLite, createHttpBackend } from "sqlite-wasm-http";
 
 // ---------------------------------------------------------------------------
 // Types shared with the main thread
@@ -22,6 +23,7 @@ export interface GenomicFeature {
   strand: string;
   biotype: string;
   description: string;
+  annotations: string;
 }
 
 export interface SearchResult {
@@ -41,6 +43,7 @@ export interface SequenceRegion {
 
 let db: any = null; // oo1 (OO API #1) database handle
 let sqlite3: any = null;
+let httpBackend: any = null;
 
 // ---------------------------------------------------------------------------
 // Public API (exposed via Comlink)
@@ -48,56 +51,10 @@ let sqlite3: any = null;
 
 const workerApi = {
   /**
-   * Initialise the WASM SQLite engine and open the database from an
-   * ArrayBuffer that was fetched on the main thread.
+   * Legacy method for array buffer initialization (disabled in VFS mode).
    */
   async init(arrayBuffer: ArrayBuffer): Promise<string> {
-    console.log(`init() called — received ArrayBuffer of ${(arrayBuffer.byteLength / 1024).toFixed(1)} KB`);
-    console.log(`The ENTIRE database is being loaded into memory at once`);
-
-    // Dynamically import sqlite3 WASM init function
-    const t0 = performance.now();
-    const { default: sqlite3InitModule } = await import(
-      // @ts-ignore — resolved by Vite at bundle-time
-      "@sqlite.org/sqlite-wasm"
-    );
-
-    sqlite3 = await (sqlite3InitModule as any)({
-      print: console.log,
-      printErr: console.error,
-    });
-    console.log(`SQLite WASM initialized in ${(performance.now() - t0).toFixed(1)} ms`);
-
-    const oo = sqlite3.oo1;
-    const capi = sqlite3.capi;
-
-    // Deserialize the ArrayBuffer into an in-memory database
-    const bytes = new Uint8Array(arrayBuffer);
-    console.log(`Deserializing ${(bytes.byteLength / 1024).toFixed(1)} KB into in-memory DB...`);
-
-    const t1 = performance.now();
-    // Create an in-memory database and deserialize the bytes into it
-    db = new oo.DB(":memory:", "c");
-    const rc = capi.sqlite3_deserialize(
-      db.pointer,
-      "main",
-      sqlite3.wasm.allocFromTypedArray(bytes),
-      bytes.byteLength,
-      bytes.byteLength,
-      capi.SQLITE_DESERIALIZE_FREEONCLOSE |
-      capi.SQLITE_DESERIALIZE_RESIZEABLE
-    );
-
-    if (rc !== 0) {
-      throw new Error(`sqlite3_deserialize failed with rc=${rc}`);
-    }
-    console.log(`Deserialization took ${(performance.now() - t1).toFixed(1)} ms`);
-
-    // Quick sanity check
-    const count = db.selectValue("SELECT count(*) FROM features");
-    console.log(` Database ready — ${count} features indexed`);
-    console.log(`Total init time: ${(performance.now() - t0).toFixed(1)} ms`);
-    return `Database loaded – ${count} features indexed.`;
+    throw new Error("init(ArrayBuffer) is disabled in on-demand VFS mode. Use initFromUrl(url) instead.");
   },
 
   /**
@@ -111,11 +68,15 @@ const workerApi = {
 
     // Sanitise: wrap bare terms so FTS5 doesn't choke on special chars
     const sanitised = query.replace(/[^a-zA-Z0-9*_ -]/g, "").trim();
-    if (!sanitised) return { features: [], elapsed_ms: 0 };
+    
+    // Return early if the sanitised query is completely empty
+    if (sanitised.length === 0) return { features: [], elapsed_ms: 0 };
 
-    // Append '*' for prefix matching so partial words still hit
+    // Append '*' for prefix matching for all terms. Since we now have prefix indexes 1, 2, 3,
+    // even single-character prefix searches are extremely fast!
     const ftsQuery = sanitised
       .split(/\s+/)
+      .filter((t) => t.length > 0)
       .map((t) => `"${t}"*`)
       .join(" ");
 
@@ -123,11 +84,12 @@ const workerApi = {
 
     const sql = `
       SELECT f.id, f.feature_id, f.name, f.feature_type,
-             f.seqid, f.start, f.end, f.strand, f.biotype, f.description
+             f.seqid, f.start, f.end, f.strand, f.biotype, f.description, f.annotations
         FROM features_fts AS fts
         JOIN features     AS f ON f.id = fts.rowid
        WHERE features_fts MATCH ?
-       ORDER BY fts.rank;
+       ORDER BY fts.rank
+       LIMIT 100;
     `;
 
     const rows: GenomicFeature[] = [];
@@ -160,27 +122,46 @@ const workerApi = {
   },
 
   /**
-   * Initialise the database by fetching the .db file from a URL,
-   * using HTTP Range requests when the server supports them.
-   * Falls back to a single GET if Range is unsupported.
+   * Initialise the database on-demand using HTTP VFS.
+   * This uses HTTP Range requests to stream database blocks on-demand.
    */
   async initFromUrl(url: string): Promise<string> {
-    console.log(`initFromUrl("${url}") — starting download...`);
-    const { loadWithRangeRequests } = await import("./httpRangeLoader");
+    console.log(`initFromUrl("${url}") — starting HTTP VFS initialization...`);
+    const t0 = performance.now();
 
-    const result = await loadWithRangeRequests(url, {
-      chunkSize: 256 * 1024,
-    });
+    try {
+      // 1. Create the HTTP backend for remote database access
+      httpBackend = createHttpBackend({
+        maxPageSize: 4096,
+        cacheSize: 4096, // 4MB cache size
+        backendType: "sync",
+      });
 
-    console.log(`[db.worker] Download complete — ${(result.totalBytes / 1024).toFixed(1)} KB, rangeRequests=${result.usedRangeRequests}, chunks=${result.chunksLoaded}`);
+      console.log(`[db.worker] HTTP VFS backend created (type: ${httpBackend.type})`);
 
-    const msg = await workerApi.init(result.buffer);
+      // 2. Initialize synchronous SQLite w/ the HTTP backend
+      sqlite3 = await initSyncSQLite({ http: httpBackend });
+      console.log(`[db.worker] SQLite VFS initialized in ${(performance.now() - t0).toFixed(1)} ms`);
 
-    const method = result.usedRangeRequests
-      ? `Loaded via ${result.chunksLoaded} HTTP Range request(s) (${(result.totalBytes / 1024).toFixed(0)} KB)`
-      : `Loaded via single request (${(result.totalBytes / 1024).toFixed(0)} KB)`;
+      const oo = sqlite3.oo1;
 
-    return `${msg} ${method}.`;
+      // 3. Open the database using HTTP VFS
+      db = new oo.DB({
+        filename: "file:" + encodeURI(url),
+        vfs: "http",
+      });
+
+      console.log(`[db.worker] Database opened via HTTP VFS in ${(performance.now() - t0).toFixed(1)} ms`);
+
+      // 4. Quick sanity check: count indexed features
+      const count = db.selectValue("SELECT count(*) FROM features");
+      console.log(`[db.worker] Database ready — ${count} features indexed`);
+
+      return `Database loaded via on-demand HTTP VFS (type: ${httpBackend.type}) – ${count} features indexed.`;
+    } catch (err: any) {
+      console.error(`[db.worker] Failed to initialize HTTP VFS:`, err);
+      throw err;
+    }
   },
 
   /**
@@ -209,7 +190,7 @@ const workerApi = {
     const features: GenomicFeature[] = [];
     db.exec({
       sql: `SELECT id, feature_id, name, feature_type, seqid, start, end,
-                    strand, biotype, description
+                    strand, biotype, description, annotations
                FROM features ORDER BY seqid, start LIMIT ?`,
       bind: [limit],
       rowMode: "object",
@@ -237,7 +218,7 @@ const workerApi = {
     const features: GenomicFeature[] = [];
     db.exec({
       sql: `SELECT id, feature_id, name, feature_type, seqid, start, end,
-                   strand, biotype, description
+                   strand, biotype, description, annotations
               FROM features
              WHERE seqid = ?
                AND end >= ?

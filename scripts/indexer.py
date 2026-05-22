@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS features (
     end         INTEGER NOT NULL,
     strand      TEXT,
     biotype     TEXT,
-    description TEXT
+    description TEXT,
+    annotations TEXT
 );
 """
 
@@ -43,8 +44,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS features_fts USING fts5(
     name,
     feature_type,
     description,
+    annotations,
     content='features',
-    content_rowid='id'
+    content_rowid='id',
+    prefix='1 2 3'
 );
 """
 
@@ -56,26 +59,26 @@ ON features(seqid, start, end);
 # Triggers keep the FTS index in sync when rows change.
 TRIGGERS = """
 CREATE TRIGGER IF NOT EXISTS features_ai AFTER INSERT ON features BEGIN
-    INSERT INTO features_fts(rowid, feature_id, name, feature_type, description)
-    VALUES (new.id, new.feature_id, new.name, new.feature_type, new.description);
+    INSERT INTO features_fts(rowid, feature_id, name, feature_type, description, annotations)
+    VALUES (new.id, new.feature_id, new.name, new.feature_type, new.description, new.annotations);
 END;
 
 CREATE TRIGGER IF NOT EXISTS features_ad AFTER DELETE ON features BEGIN
-    INSERT INTO features_fts(features_fts, rowid, feature_id, name, feature_type, description)
-    VALUES ('delete', old.id, old.feature_id, old.name, old.feature_type, old.description);
+    INSERT INTO features_fts(features_fts, rowid, feature_id, name, feature_type, description, annotations)
+    VALUES ('delete', old.id, old.feature_id, old.name, old.feature_type, old.description, old.annotations);
 END;
 
 CREATE TRIGGER IF NOT EXISTS features_au AFTER UPDATE ON features BEGIN
-    INSERT INTO features_fts(features_fts, rowid, feature_id, name, feature_type, description)
-    VALUES ('delete', old.id, old.feature_id, old.name, old.feature_type, old.description);
-    INSERT INTO features_fts(rowid, feature_id, name, feature_type, description)
-    VALUES (new.id, new.feature_id, new.name, new.feature_type, new.description);
+    INSERT INTO features_fts(features_fts, rowid, feature_id, name, feature_type, description, annotations)
+    VALUES ('delete', old.id, old.feature_id, old.name, old.feature_type, old.description, old.annotations);
+    INSERT INTO features_fts(rowid, feature_id, name, feature_type, description, annotations)
+    VALUES (new.id, new.feature_id, new.name, new.feature_type, new.description, new.annotations);
 END;
 """
 
 INSERT_FEATURE = """
-INSERT INTO features (feature_id, name, feature_type, seqid, start, end, strand, biotype, description)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO features (feature_id, name, feature_type, seqid, start, end, strand, biotype, description, annotations)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 """
 
 # ---------------------------------------------------------------------------
@@ -149,6 +152,14 @@ def build_database(gff_path: str, db_path: str) -> None:
         description = _attr(feature, "description")
         strand      = feature.strand if feature.strand else "."
 
+        # Extract functional annotations from Column 9 attributes
+        ann_parts = []
+        for tag in ["pfam", "kegg", "Ontology_term", "interpro", "product", "eC_number", "eggNOG"]:
+            vals = feature.attributes.get(tag, [])
+            if vals:
+                ann_parts.append(f"{tag}: {', '.join(vals)}")
+        annotations_str = " | ".join(ann_parts) if ann_parts else None
+
         cur.execute(INSERT_FEATURE, (
             feature_id,
             name,
@@ -159,6 +170,7 @@ def build_database(gff_path: str, db_path: str) -> None:
             strand,
             biotype,
             description,
+            annotations_str,
         ))
         count += 1
 

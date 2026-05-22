@@ -65,9 +65,8 @@ export function useDbSearch(): UseDbSearchReturn {
         const proxy = Comlink.wrap<WorkerApi>(raw);
         workerRef.current = proxy;
 
-        // 2. Let the worker fetch the .db file using HTTP Range requests
-        //    (falls back to a single GET if the server doesn't support ranges)
-        setStatus("Downloading database (HTTP Range requests)…");
+        // 2. Let the worker open the remote database using HTTP VFS
+        setStatus("Connecting to database (on-demand streaming)…");
         const msg = await proxy.initFromUrl(DB_URL);
 
         if (!cancelled) {

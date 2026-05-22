@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GenomicFeature } from "../hooks/useDbSearch";
 
-const DEBOUNCE_MS = 250;
+const DEBOUNCE_MS = 200;
 
 interface SearchBarProps {
   /** Called when the user clicks a feature row. */
@@ -142,14 +142,34 @@ export default function SearchBar({
                   <tr
                     key={f.id}
                     onClick={() => onFeatureClick?.(f)}
-                    className={`group transition-colors ${
-                      onFeatureClick
+                    className={`group transition-colors ${onFeatureClick
                         ? "cursor-pointer hover:bg-[#1f3a5f]"
                         : "hover:bg-[#1a1d27]"
-                    }`}
+                      }`}
                   >
-                    <td className="px-3 py-2 border-b border-[#2a2d3a] group-last:border-0 align-top font-mono text-[0.82rem]">
-                      {f.name || f.feature_id}
+                    <td className="px-3 py-2 border-b border-[#2a2d3a] group-last:border-0 align-top max-w-[240px]">
+                      <div className="font-mono text-[0.82rem] font-semibold text-[#e1e4ed]">
+                        {f.name || f.feature_id}
+                      </div>
+                      {f.annotations && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {f.annotations.split(" | ").map((ann, idx) => {
+                            const separatorIndex = ann.indexOf(": ");
+                            if (separatorIndex === -1) return null;
+                            const key = ann.substring(0, separatorIndex);
+                            const val = ann.substring(separatorIndex + 2);
+                            return (
+                              <span
+                                key={idx}
+                                className="inline-block bg-[#161b22] text-[#8b8fa3] text-[0.68rem] px-1.5 py-0.5 rounded border border-[#30363d] font-mono leading-none"
+                                title={`${key}: ${val}`}
+                              >
+                                <span className="text-[#58a6ff] font-semibold">{key}:</span> {val}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 border-b border-[#2a2d3a] group-last:border-0 align-top">
                       <span

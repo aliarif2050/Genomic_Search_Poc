@@ -22,7 +22,7 @@ export default defineConfig({
   },
 
   optimizeDeps: {
-    exclude: ["@sqlite.org/sqlite-wasm"],
+    exclude: ["@sqlite.org/sqlite-wasm", "sqlite-wasm-http"],
     include: [
       "@mui/material",
       "@mui/icons-material",
