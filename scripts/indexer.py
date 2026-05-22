@@ -208,8 +208,8 @@ def main() -> None:
     )
     parser.add_argument(
         "-o", "--output",
-        default=os.path.join(os.path.dirname(__file__), "..", "public", "genomics.db"),
-        help="Path to the output SQLite database (default: ../public/genomics.db).",
+        default=os.path.join(os.path.dirname(__file__), "..", "public", "genomics.db.zip"),
+        help="Path to the output SQLite database (default: ../public/genomics.db.zip).",
     )
     args = parser.parse_args()
 

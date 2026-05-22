@@ -36,7 +36,7 @@ export interface UseDbSearchReturn {
   sequenceRegions: SequenceRegion[];
 }
 
-const DB_URL = `${import.meta.env.BASE_URL}genomics.db`;
+const DB_URL = `${import.meta.env.BASE_URL}genomics.db.zip`;
 
 export function useDbSearch(): UseDbSearchReturn {
   const workerRef = useRef<Comlink.Remote<WorkerApi> | null>(null);
