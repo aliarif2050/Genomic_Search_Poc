@@ -153,11 +153,12 @@ const workerApi = {
 
       console.log(`[db.worker] Database opened via HTTP VFS in ${(performance.now() - t0).toFixed(1)} ms`);
 
-      // 4. Quick sanity check: count indexed features
-      const count = db.selectValue("SELECT count(*) FROM features");
-      console.log(`[db.worker] Database ready — ${count} features indexed`);
+      // 4. Quick sanity check: retrieve the highest ID using the primary key index (O(log N))
+      // This avoids a full-table scan (SELECT count(*)) which triggers 100+ sequential HTTP requests.
+      const count = db.selectValue("SELECT id FROM features ORDER BY id DESC LIMIT 1") || 0;
+      console.log(`[db.worker] Database ready — ~${count} features indexed`);
 
-      return `Database loaded via on-demand HTTP VFS (type: ${httpBackend.type}) – ${count} features indexed.`;
+      return `Database loaded via on-demand HTTP VFS (type: ${httpBackend.type}) – ~${count} features indexed.`;
     } catch (err: any) {
       console.error(`[db.worker] Failed to initialize HTTP VFS:`, err);
       throw err;
