@@ -66,29 +66,33 @@ const workerApi = {
 
     const t0 = performance.now();
 
-    // Sanitise: wrap bare terms so FTS5 doesn't choke on special chars
-    const sanitised = query.replace(/[^a-zA-Z0-9*_ -]/g, "").trim();
+    // Replace underscores, hyphens, and other punctuation with spaces.
+    // In FTS5 with detail=none, any punctuation-joined term (like BU_ATCC or gene-BU) is compiled
+    // into an implicit phrase query, which causes a crash. Replacing punctuation with spaces
+    // splits them into safe, high-speed boolean AND queries.
+    const sanitised = query.replace(/[^a-zA-Z0-9*]/g, " ").trim();
     
     // Return early if the sanitised query is completely empty
     if (sanitised.length === 0) return { features: [], elapsed_ms: 0 };
 
-    // Append '*' for prefix matching for all terms. Since we now have prefix indexes 1, 2, 3,
-    // even single-character prefix searches are extremely fast!
+    // Split into individual terms, clean up leading/trailing hyphens and wildcards to prevent FTS5 syntax errors,
+    // and append '*' for prefix matching. Do NOT wrap in double quotes, as phrase queries are not supported
+    // in FTS5 with detail=none.
     const ftsQuery = sanitised
       .split(/\s+/)
+      .map((t) => t.replace(/^[-*]+|[-*]+$/g, "").trim())
       .filter((t) => t.length > 0)
-      .map((t) => `"${t}"*`)
+      .map((t) => `${t}*`)
       .join(" ");
 
     console.log(`[db.worker] search("${query}") → FTS query: ${ftsQuery}`);
 
     const sql = `
-      SELECT f.id, f.feature_id, f.name, f.feature_type,
-             f.seqid, f.start, f.end, f.strand, f.biotype, f.description, f.annotations
-        FROM features_fts AS fts
-        JOIN features     AS f ON f.id = fts.rowid
-       WHERE features_fts MATCH ?
-       ORDER BY fts.rank
+      SELECT rowid AS id, feature_id, name, feature_type,
+             seqid, start, end, strand, biotype, description, annotations
+        FROM search_index
+       WHERE search_index MATCH ?
+       ORDER BY rank
        LIMIT 100;
     `;
 
@@ -114,7 +118,7 @@ const workerApi = {
     if (!db) throw new Error("Database not initialised");
     const types: string[] = [];
     db.exec({
-      sql: "SELECT DISTINCT feature_type FROM features ORDER BY feature_type",
+      sql: "SELECT DISTINCT feature_type FROM search_index ORDER BY feature_type",
       rowMode: "array",
       callback: (row: string[]) => types.push(row[0]),
     });
@@ -153,9 +157,8 @@ const workerApi = {
 
       console.log(`[db.worker] Database opened via HTTP VFS in ${(performance.now() - t0).toFixed(1)} ms`);
 
-      // 4. Quick sanity check: retrieve the highest ID using the primary key index (O(log N))
-      // This avoids a full-table scan (SELECT count(*)) which triggers 100+ sequential HTTP requests.
-      const count = db.selectValue("SELECT id FROM features ORDER BY id DESC LIMIT 1") || 0;
+      // 4. Quick sanity check: count indexed features in search_index
+      const count = db.selectValue("SELECT count(*) FROM search_index") || 0;
       console.log(`[db.worker] Database ready — ~${count} features indexed`);
 
       return `Database loaded via on-demand HTTP VFS (type: ${httpBackend.type}) – ~${count} features indexed.`;
