@@ -47,7 +47,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS features_fts USING fts5(
     annotations,
     content='features',
     content_rowid='id',
-    prefix='1 2 3'
+    tokenize='unicode61',
+    prefix='3 4 5'
 );
 """
 
@@ -58,17 +59,23 @@ ON features(seqid, start, end);
 
 # Triggers keep the FTS index in sync when rows change.
 TRIGGERS = """
-CREATE TRIGGER IF NOT EXISTS features_ai AFTER INSERT ON features BEGIN
+CREATE TRIGGER IF NOT EXISTS features_ai AFTER INSERT ON features 
+WHEN new.feature_type NOT IN ('mRNA', 'exon', 'CDS')
+BEGIN
     INSERT INTO features_fts(rowid, feature_id, name, feature_type, description, annotations)
     VALUES (new.id, new.feature_id, new.name, new.feature_type, new.description, new.annotations);
 END;
 
-CREATE TRIGGER IF NOT EXISTS features_ad AFTER DELETE ON features BEGIN
+CREATE TRIGGER IF NOT EXISTS features_ad AFTER DELETE ON features 
+WHEN old.feature_type NOT IN ('mRNA', 'exon', 'CDS')
+BEGIN
     INSERT INTO features_fts(features_fts, rowid, feature_id, name, feature_type, description, annotations)
     VALUES ('delete', old.id, old.feature_id, old.name, old.feature_type, old.description, old.annotations);
 END;
 
-CREATE TRIGGER IF NOT EXISTS features_au AFTER UPDATE ON features BEGIN
+CREATE TRIGGER IF NOT EXISTS features_au AFTER UPDATE ON features 
+WHEN new.feature_type NOT IN ('mRNA', 'exon', 'CDS')
+BEGIN
     INSERT INTO features_fts(features_fts, rowid, feature_id, name, feature_type, description, annotations)
     VALUES ('delete', old.id, old.feature_id, old.name, old.feature_type, old.description, old.annotations);
     INSERT INTO features_fts(rowid, feature_id, name, feature_type, description, annotations)
@@ -114,6 +121,7 @@ def build_database(gff_path: str, db_path: str) -> None:
             os.remove(db_path)
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
+        cur.execute("PRAGMA page_size = 8192;")
         cur.executescript(SCHEMA_MAIN)
         cur.executescript(SCHEMA_FTS)
         cur.executescript(SCHEMA_INDEXES)
@@ -137,6 +145,9 @@ def build_database(gff_path: str, db_path: str) -> None:
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
+    cur.execute("PRAGMA journal_mode = OFF;")
+    cur.execute("PRAGMA synchronous = OFF;")
+    cur.execute("PRAGMA page_size = 8192;")
     cur.executescript(SCHEMA_MAIN)
     cur.executescript(SCHEMA_FTS)
     cur.executescript(SCHEMA_INDEXES)
@@ -178,6 +189,11 @@ def build_database(gff_path: str, db_path: str) -> None:
 
     # --- 4. Optimise FTS index -----------------------------------------------
     cur.execute("INSERT INTO features_fts(features_fts) VALUES ('optimize');")
+    conn.commit()
+
+    # --- 5. Vacuum database --------------------------------------------------
+    print("[indexer] Vacuuming database to reclaim space...")
+    cur.execute("VACUUM;")
     conn.commit()
     conn.close()
 

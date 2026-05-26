@@ -58,9 +58,15 @@ export default function SearchBar({
       setQuery(val);
 
       if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        search(val);
-      }, DEBOUNCE_MS);
+
+      if (val.trim().length >= 3) {
+        timerRef.current = setTimeout(() => {
+          search(val);
+        }, DEBOUNCE_MS);
+      } else {
+        // Immediately clear results if query is less than 3 characters
+        search("");
+      }
     },
     [search]
   );
@@ -202,7 +208,7 @@ export default function SearchBar({
       )}
 
       {/* Empty state */}
-      {!loading && query && !searching && results.length === 0 && (
+      {!loading && query.trim().length >= 3 && !searching && results.length === 0 && (
         <p className="text-center text-[#8b8fa3] mt-12 text-[0.95rem]">
           No features matched "{query}".
         </p>

@@ -132,7 +132,7 @@ const workerApi = {
     try {
       // 1. Create the HTTP backend for remote database access
       httpBackend = createHttpBackend({
-        maxPageSize: 4096,
+        maxPageSize: 8192,
         cacheSize: 4096, // 4MB cache size
         backendType: "sync",
       });
