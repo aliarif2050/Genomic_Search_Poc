@@ -157,8 +157,9 @@ const workerApi = {
 
       console.log(`[db.worker] Database opened via HTTP VFS in ${(performance.now() - t0).toFixed(1)} ms`);
 
-      // 4. Quick sanity check: count indexed features in search_index
-      const count = db.selectValue("SELECT count(*) FROM search_index") || 0;
+      // 4. Quick sanity check: retrieve the highest rowid from search_index.
+      // This is an O(1) operation that avoids a full-table scan (SELECT count(*)) and prevents extra HTTP VFS range requests.
+      const count = db.selectValue("SELECT max(rowid) FROM search_index") || 0;
       console.log(`[db.worker] Database ready — ~${count} features indexed`);
 
       return `Database loaded via on-demand HTTP VFS (type: ${httpBackend.type}) – ~${count} features indexed.`;
