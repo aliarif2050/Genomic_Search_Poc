@@ -25,15 +25,6 @@ export interface UseDbSearchReturn {
   elapsed: number;
   /** Trigger a search. Debounced automatically in the component layer. */
   search: (query: string) => Promise<void>;
-  /** Retrieve features overlapping a genomic window. */
-  getFeaturesInRegion: (
-    seqid: string,
-    start: number,
-    end: number,
-    limit?: number
-  ) => Promise<GenomicFeature[]>;
-  /** Sequence regions (chromosomes / scaffolds) discovered from the DB */
-  sequenceRegions: SequenceRegion[];
 }
 
 const DB_URL = `${import.meta.env.BASE_URL}genomics.db.zip`;
@@ -48,7 +39,6 @@ export function useDbSearch(): UseDbSearchReturn {
   const [status, setStatus] = useState("Initialising…");
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [sequenceRegions, setSequenceRegions] = useState<SequenceRegion[]>([]);
 
   // ---- Boot: fetch DB + init worker ----
   useEffect(() => {
@@ -65,17 +55,12 @@ export function useDbSearch(): UseDbSearchReturn {
         const proxy = Comlink.wrap<WorkerApi>(raw);
         workerRef.current = proxy;
 
-        // 2. Let the worker open the remote database using HTTP VFS
-        setStatus("Connecting to database (on-demand streaming)…");
+        // 2. Let the worker open the remote database
+        setStatus("Connecting to database…");
         const msg = await proxy.initFromUrl(DB_URL);
 
         if (!cancelled) {
           setStatus(msg);
-
-          // 3. Load metadata for the genome browser
-          const regions = await proxy.getSequenceRegions();
-          setSequenceRegions(regions);
-
           setLoading(false);
         }
       } catch (err: any) {
@@ -118,24 +103,6 @@ export function useDbSearch(): UseDbSearchReturn {
     }
   }, []);
 
-  const getFeaturesInRegion = useCallback(
-    async (seqid: string, start: number, end: number, limit = 5000) => {
-      if (!workerRef.current) return [];
-      try {
-        return await workerRef.current.getFeaturesInRegion(
-          seqid,
-          start,
-          end,
-          limit
-        );
-      } catch (err: any) {
-        setError(err.message ?? String(err));
-        return [];
-      }
-    },
-    []
-  );
-
   return {
     results,
     loading,
@@ -144,7 +111,5 @@ export function useDbSearch(): UseDbSearchReturn {
     error,
     elapsed,
     search,
-    getFeaturesInRegion,
-    sequenceRegions,
   };
 }
