@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-
-#   indexer.py — GFF3 → SQLite+FTS5 Indexer
-#   ========================================
-#   Parses a GFF3 file using gffutils and produces a genomics.db SQLite database
-#   with:
-#    • `features`   --> main table holding genomic coordinates + metadata
-#    • `features_fts` --> FTS5 virtual table for full-text search on Name / ID / description
-
-
 import argparse
 import os
 import sqlite3
@@ -18,9 +8,7 @@ import gffutils
 from gffutils.exceptions import EmptyInputError
 
 
-# ---------------------------------------------------------------------------
 # Schema
-# ---------------------------------------------------------------------------
 
 SCHEMA_MAIN = """
 CREATE TABLE IF NOT EXISTS features (
@@ -88,9 +76,8 @@ INSERT INTO features (feature_id, name, feature_type, seqid, start, end, strand,
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 """
 
-# ---------------------------------------------------------------------------
+
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _attr(feature, key: str, default: str = "") -> str:
     """Safely retrieve a single-valued GFF attribute."""
@@ -139,7 +126,7 @@ def build_database(gff_path: str, db_path: str) -> None:
         print(f"[indexer] ERROR creating gffutils db: {exc}", file=sys.stderr)
         raise
 
-    # --- 2. Create output SQLite database ------------------------------------
+    # 2. Create output SQLite database 
     if os.path.exists(db_path):
         os.remove(db_path)
 
@@ -154,7 +141,7 @@ def build_database(gff_path: str, db_path: str) -> None:
     cur.executescript(TRIGGERS)
     conn.commit()
 
-    # --- 3. Iterate features and insert rows ---------------------------------
+    #  3. Iterate features and insert rows
     count = 0
     for feature in gff_db.all_features():
         feature_id  = _attr(feature, "ID")
@@ -187,11 +174,11 @@ def build_database(gff_path: str, db_path: str) -> None:
 
     conn.commit()
 
-    # --- 4. Optimise FTS index -----------------------------------------------
+    #  4. Optimise FTS index 
     cur.execute("INSERT INTO features_fts(features_fts) VALUES ('optimize');")
     conn.commit()
 
-    # --- 5. Vacuum database --------------------------------------------------
+    #  5. Vacuum database
     print("[indexer] Vacuuming database to reclaim space...")
     cur.execute("VACUUM;")
     conn.commit()
@@ -210,9 +197,9 @@ def build_database(gff_path: str, db_path: str) -> None:
     print(f"[indexer] Wrote {count} features -> {db_path}")
 
 
-# ---------------------------------------------------------------------------
+
 # CLI
-# ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
