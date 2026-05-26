@@ -10,8 +10,6 @@ import type { GenomicFeature } from "../hooks/useDbSearch";
 const DEBOUNCE_MS = 200;
 
 interface SearchBarProps {
-  /** Called when the user clicks a feature row. */
-  onFeatureClick?: (feature: GenomicFeature) => void;
   results: GenomicFeature[];
   loading: boolean;
   searching: boolean;
@@ -38,7 +36,6 @@ function getBadgeClasses(type: string) {
 }
 
 export default function SearchBar({
-  onFeatureClick,
   results,
   loading,
   searching,
@@ -79,7 +76,7 @@ export default function SearchBar({
   }, []);
 
   return (
-    <div className="pl-4 min-w-0 w-full lg:basis-[38%] lg:max-w-[38%] flex flex-col">
+    <div className="w-full flex flex-col">
       {/* Header */}
       <header>
         <h1 className="pl-2.5 text-3xl font-bold mb-1">🧬 Genomic Feature Search</h1>
@@ -147,11 +144,7 @@ export default function SearchBar({
                 {results.map((f: GenomicFeature) => (
                   <tr
                     key={f.id}
-                    onClick={() => onFeatureClick?.(f)}
-                    className={`group transition-colors ${onFeatureClick
-                        ? "cursor-pointer hover:bg-[#1f3a5f]"
-                        : "hover:bg-[#1a1d27]"
-                      }`}
+                    className="group hover:bg-[#1a1d27] transition-colors"
                   >
                     <td className="px-3 py-2 border-b border-[#2a2d3a] group-last:border-0 align-top max-w-[240px]">
                       <div className="font-mono text-[0.82rem] font-semibold text-[#e1e4ed]">
