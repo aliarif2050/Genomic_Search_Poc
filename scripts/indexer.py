@@ -13,16 +13,16 @@ BATCH_SIZE = 150_000
 
 # Case-robust set of noisy feature types skipped in functional searches unless they carry annotations
 LOW_VALUE_TYPES = {
-    "exon", "EXON", "Exon",
-    "region", "REGION", "Region",
-    "chromosome", "CHROMOSOME", "Chromosome",
-    "supercontig", "SUPERCONTIG", "Supercontig",
-    "contig", "CONTIG", "Contig",
-    "match", "MATCH", "Match",
-    "match_part", "MATCH_PART", "Match_part",
-    "cdna_match", "CDNA_MATCH", "Cdna_match",
-    "est_match", "EST_MATCH", "Est_match",
-    "sequence_feature", "SEQUENCE_FEATURE", "Sequence_feature",
+    "exon",
+    "region",
+    "chromosome",
+    "supercontig",
+    "contig",
+    "match",
+    "match_part",
+    "cdna_match",
+    "est_match",
+    "sequence_feature",
 }
 
 FUNCTIONAL_TAGS = [
@@ -191,6 +191,7 @@ def parse_gff_line(line: str, generated_id: int):
     # Columns are guaranteed to be space-free, so direct access is faster than calling .strip()
     seqid = cols[0]
     feature_type = cols[2]
+    feature_type_key = feature_type.lower()
     strand = cols[6] if cols[6] != "." and cols[6] != "" else "."
     attrs = parse_attributes(cols[8])
 
@@ -208,7 +209,7 @@ def parse_gff_line(line: str, generated_id: int):
     has_identity = bool(name or not feature_id.startswith("generated_"))
 
     # Direct O(1) set lookup bypassing runtime feature_type.lower() string allocations
-    if feature_type in LOW_VALUE_TYPES and not has_real_annotation:
+    if feature_type_key in LOW_VALUE_TYPES and not has_real_annotation:
         return None
 
     if not has_real_annotation and not has_identity:
@@ -248,7 +249,7 @@ def prepare_database(
     cur.execute("PRAGMA locking_mode = EXCLUSIVE;")
     cur.execute("PRAGMA secure_delete = OFF;")
     cur.execute(f"PRAGMA page_size = {int(page_size)};")
-    cur.execute("PRAGMA cache_size = -1000000;")
+    cur.execute("PRAGMA cache_size = -300000;")
 
     cur.executescript(make_schema(use_prefix))
     conn.commit()
