@@ -5,33 +5,35 @@ import gzip
 import os
 import sqlite3
 import sys
+import time
 from urllib.parse import unquote
 
 
-BATCH_SIZE = 50_000
+BATCH_SIZE = 150_000
 
-# Noisy feature types we ignore unless they have unique descriptions
+# Case-robust set of noisy feature types skipped in functional searches unless they carry annotations
 LOW_VALUE_TYPES = {
-    "exon", "region", "chromosome", "supercontig", "contig",
-    "match", "match_part", "cdna_match", "est_match", "sequence_feature",
+    "exon", "EXON", "Exon",
+    "region", "REGION", "Region",
+    "chromosome", "CHROMOSOME", "Chromosome",
+    "supercontig", "SUPERCONTIG", "Supercontig",
+    "contig", "CONTIG", "Contig",
+    "match", "MATCH", "Match",
+    "match_part", "MATCH_PART", "Match_part",
+    "cdna_match", "CDNA_MATCH", "Cdna_match",
+    "est_match", "EST_MATCH", "Est_match",
+    "sequence_feature", "SEQUENCE_FEATURE", "Sequence_feature",
 }
 
 FUNCTIONAL_TAGS = [
-    "Dbxref", "dbxref",
-    "Ontology_term", "ontology_term", "GO",
-    "gene_synonym", "Alias", "alias",
-    "locus_tag", "standard_name",
-    "function", "pfam", "Pfam", "PFAM",
-    "interpro", "InterPro",
-    "KEGG", "kegg", "eggNOG",
-    "EC_number", "ec_number", "eC_number",
-    "protein_id", "transcript_id",
-    "inference", "experiment",
+    "dbxref", "ontology_term", "go", "gene_synonym", "alias", "locus_tag", 
+    "standard_name", "function", "pfam", "interpro", "kegg", "eggnog", 
+    "ec_number", "protein_id", "transcript_id", "inference", "experiment"
 ]
 
-DESCRIPTION_KEYS = ["description", "product", "Note", "note"]
-NAME_KEYS = ["Name", "gene", "gene_name", "locus_tag", "standard_name"]
-ID_KEYS = ["ID", "locus_tag", "protein_id", "transcript_id", "gene", "Name"]
+DESCRIPTION_KEYS = ["description", "product", "note"]
+NAME_KEYS = ["name", "gene", "gene_name", "locus_tag", "standard_name"]
+ID_KEYS = ["id", "locus_tag", "protein_id", "transcript_id", "gene", "name"]
 BIOTYPE_KEYS = ["gene_biotype", "biotype", "transcript_biotype", "gbkey"]
 
 
@@ -91,14 +93,14 @@ def parse_attributes(attr_text: str) -> dict[str, list[str]]:
             values = [unquote(v.strip()) for v in value.split(",") if v.strip()]
 
             if values:
-                attrs.setdefault(key.strip(), []).extend(values)
+                attrs.setdefault(key.strip().lower(), []).extend(values)
 
         elif " " in part:
             key, value = part.split(" ", 1)
             value = value.strip().strip('"')
 
             if key.strip() and value:
-                attrs.setdefault(key.strip(), []).append(unquote(value))
+                attrs.setdefault(key.strip().lower(), []).append(unquote(value))
 
     return attrs
 
@@ -115,31 +117,24 @@ def first_attr(attrs: dict[str, list[str]], keys: list[str], default: str = "") 
 
 
 def compact_join(values: list[str], max_items: int = 6, max_chars: int = 500) -> str:
-    clean = []
-
-    for value in values:
-        value = str(value).strip()
-
-        if value and value not in clean:
-            clean.append(value)
-
-        if len(clean) >= max_items:
-            break
-
-    text = ", ".join(clean)
-
+    """Join pre-deduplicated values under a strict character limit."""
+    text = ", ".join(values[:max_items])
     if len(text) > max_chars:
         return text[:max_chars].rstrip() + "..."
-
     return text
 
- # Gathers high-value functional tags into one searchable string
+
 def build_annotations(
     attrs: dict[str, list[str]],
-    already_used_values: set[str],
+    feature_id: str,
+    name: str,
+    biotype: str,
+    description: str,
 ) -> str | None:
+    """Consolidate high-value GFF functional annotations into a compact searchable field."""
     parts = []
     seen = set()
+    already_used_values = None  # Lazily evaluated to save CPU on structural lines
 
     for tag in FUNCTIONAL_TAGS:
         values = attrs.get(tag)
@@ -147,16 +142,19 @@ def build_annotations(
         if not values:
             continue
 
+        if already_used_values is None:
+            already_used_values = {
+                v.lower()
+                for v in (feature_id, name, biotype, description)
+                if v
+            }
+
         filtered = []
+        tag_lower = tag.lower()
 
         for value in values:
-            value = str(value).strip()
-
-            if not value:
-                continue
-
             value_key = value.lower()
-            dedupe_key = (tag.lower(), value_key)
+            dedupe_key = (tag_lower, value_key)
 
             if value_key in already_used_values or dedupe_key in seen:
                 continue
@@ -164,20 +162,21 @@ def build_annotations(
             seen.add(dedupe_key)
             filtered.append(value)
 
-        joined = compact_join(filtered)
-
-        if joined:
-            parts.append(f"{tag}: {joined}")
+        if filtered:
+            joined = compact_join(filtered)
+            if joined:
+                parts.append(f"{tag}: {joined}")
 
     return " | ".join(parts) if parts else None
 
 
 def parse_gff_line(line: str, generated_id: int):
-    line = line.strip()
-
-    if not line or line.startswith("#"):
+    # Fast path: check for comments or whitespace before running expensive string operations
+    if not line or line[0] == "#" or line.isspace():
         return None
 
+    # Strip only standard newline trailing terminators
+    line = line.rstrip("\r\n")
     cols = line.split("\t")
 
     if len(cols) < 9:
@@ -189,9 +188,10 @@ def parse_gff_line(line: str, generated_id: int):
     except ValueError:
         return None
 
-    seqid = cols[0].strip()
-    feature_type = cols[2].strip()
-    strand = cols[6].strip() or "."
+    # Columns are guaranteed to be space-free, so direct access is faster than calling .strip()
+    seqid = cols[0]
+    feature_type = cols[2]
+    strand = cols[6] if cols[6] != "." and cols[6] != "" else "."
     attrs = parse_attributes(cols[8])
 
     feature_id = first_attr(attrs, ID_KEYS, default=f"generated_{generated_id}")
@@ -202,18 +202,13 @@ def parse_gff_line(line: str, generated_id: int):
     if len(description) > 500:
         description = description[:500].rstrip() + "..."
 
-    already_used_values = {
-        value.lower()
-        for value in [feature_id, name, biotype, description]
-        if value
-    }
-
-    annotations = build_annotations(attrs, already_used_values)
+    annotations = build_annotations(attrs, feature_id, name, biotype, description)
 
     has_real_annotation = bool(description or annotations or biotype)
     has_identity = bool(name or not feature_id.startswith("generated_"))
 
-    if feature_type.lower() in LOW_VALUE_TYPES and not has_real_annotation:
+    # Direct O(1) set lookup bypassing runtime feature_type.lower() string allocations
+    if feature_type in LOW_VALUE_TYPES and not has_real_annotation:
         return None
 
     if not has_real_annotation and not has_identity:
@@ -253,7 +248,7 @@ def prepare_database(
     cur.execute("PRAGMA locking_mode = EXCLUSIVE;")
     cur.execute("PRAGMA secure_delete = OFF;")
     cur.execute(f"PRAGMA page_size = {int(page_size)};")
-    cur.execute("PRAGMA cache_size = -200000;")
+    cur.execute("PRAGMA cache_size = -1000000;")
 
     cur.executescript(make_schema(use_prefix))
     conn.commit()
@@ -274,6 +269,7 @@ def build_database(
     vacuum: bool = True,
     limit: int | None = None,
 ) -> None:
+    start_time = time.time()
     if isinstance(gff_paths, str):
         gff_paths = [gff_paths]
 
@@ -353,6 +349,7 @@ def build_database(
     print(f"[indexer] Skipped low-value/invalid rows: {skipped_rows:,}")
     print(f"[indexer] Output: {db_path}")
     print(f"[indexer] DB size: {size_mb:.2f} MB")
+    print(f"[indexer] Time elapsed: {time.time() - start_time:.2f} seconds")
 
 
 def main() -> None:

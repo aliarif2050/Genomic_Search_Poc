@@ -96,15 +96,7 @@ const workerApi = {
        LIMIT 100;
     `;
 
-    const rows: GenomicFeature[] = [];
-    db.exec({
-      sql,
-      bind: [ftsQuery],
-      rowMode: "object",
-      callback: (row: GenomicFeature) => {
-        rows.push({ ...row });
-      },
-    });
+    const rows = db.selectObjects(sql, [ftsQuery]) as GenomicFeature[];
 
     console.log(`[db.worker] search found ${rows.length} results in ${(performance.now() - t0).toFixed(1)} ms`);
     return { features: rows, elapsed_ms: performance.now() - t0 };
