@@ -71,7 +71,7 @@ const workerApi = {
     // into an implicit phrase query, which causes a crash. Replacing punctuation with spaces
     // splits them into safe, high-speed boolean AND queries.
     const sanitised = query.replace(/[^a-zA-Z0-9*]/g, " ").trim();
-    
+
     // Return early if the sanitised query is completely empty
     if (sanitised.length === 0) return { features: [], elapsed_ms: 0 };
 
@@ -92,7 +92,6 @@ const workerApi = {
              seqid, start, end, strand, biotype, description, annotations
         FROM search_index
        WHERE search_index MATCH ?
-       ORDER BY rank
        LIMIT 25;
     `;
 
