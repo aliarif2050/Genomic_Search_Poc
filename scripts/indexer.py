@@ -298,7 +298,13 @@ def build_database(
                 for line in handle:
                     if limit is not None and parsed_features >= limit:
                         break
+                    if line.startswith("##FASTA") or line.startswith(">"):
+                        print("[indexer] Encountered FASTA section, stopping parser.")
+                        break
 
+                    # 2. Skip empty lines and comments without counting them as errors
+                    if not line or line.startswith("#") or line.isspace():
+                        continue
                     row = parse_gff_line(line, generated_id)
 
                     if row is None:

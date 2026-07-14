@@ -93,7 +93,7 @@ const workerApi = {
         FROM search_index
        WHERE search_index MATCH ?
        ORDER BY rank
-       LIMIT 100;
+       LIMIT 25;
     `;
 
     const rows = db.selectObjects(sql, [ftsQuery]) as GenomicFeature[];
